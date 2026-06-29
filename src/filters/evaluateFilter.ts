@@ -14,9 +14,7 @@ export function evaluateFilter(
   operator: FilterOperator,
   expectedValue: any
 ): boolean {
-
   switch (operator) {
-
     case 'equals':
       return actualValue === expectedValue;
 

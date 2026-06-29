@@ -13,13 +13,9 @@ export interface ApiResponse {
 }
 
 export class XeroService {
-
   async createInvoice(invoice: Invoice): Promise<ApiResponse> {
-
     // Simulate API call
-
     console.log('Sending invoice to Xero...');
-
     console.log(invoice);
 
     return {
@@ -30,7 +26,6 @@ export class XeroService {
   }
 
   async getInvoice(invoiceNumber: string): Promise<ApiResponse> {
-
     return {
       success: true,
       message: 'Invoice retrieved successfully.',
@@ -45,11 +40,9 @@ export class XeroService {
   }
 
   async deleteInvoice(invoiceNumber: string): Promise<ApiResponse> {
-
     return {
       success: true,
       message: `Invoice ${invoiceNumber} deleted successfully.`
     };
   }
-
 }
