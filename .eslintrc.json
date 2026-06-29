@@ -1,0 +1,10 @@
+{
+  "root": true,
+  "extends": ["eslint:recommended"],
+  "parserPreset": "typescript-eslint",
+  "env": {
+    "node": true,
+    "es2021": true
+  },
+  "rules": {}
+}
