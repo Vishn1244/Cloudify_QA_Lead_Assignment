@@ -10,15 +10,21 @@
     "test:unit": "vitest run",
     "test:integration": "vitest run tests/integration/workflowRunReRun.test.ts",
     "test:e2e": "playwright test",
-    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "@eslint/js": "^8.57.0",
     "@playwright/test": "^1.61.1",
     "@types/node": "^26.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
   }
