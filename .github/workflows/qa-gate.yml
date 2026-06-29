@@ -1,0 +1,330 @@
+# QA Gate — merge-blocking quality gate for the Lighthouse Platform pipeline
+#
+# Triggers:
+#   - Every push to a pull_request targeting main or staging (unit tests)
+#   - Merge commit onto main or staging (integration tests + coverage gate)
+#
+# The Lambda/SST integration tests run as a separate job because they require
+# sst bind vitest, which needs AWS resource bindings injected at test startup.
+# We keep them isolated so a failing Lambda test does not mask a passing unit
+# suite, and so the overhead of SST setup does not slow the developer's
+# inner-loop feedback for pure unit tests.
+
+name: QA Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+  push:
+    branches:
+      - main
+      - staging
+
+# Cancel in-progress runs on the same branch when a new push arrives.
+# Prevents queue buildup when developers push multiple commits in quick
+# succession during active development.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Lint and type-check
+  # Runs first — fastest feedback, catches the most common mistakes.
+  # ---------------------------------------------------------------------------
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run TypeScript type check
+        run: npm run typecheck
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Unit tests with coverage
+  # Pure Vitest — no external dependencies, no SST, no database.
+  # Must complete in under 2 minutes on average. Blocks PR merge.
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint-and-typecheck
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        run: npx vitest run --coverage --reporter=verbose --reporter=junit --outputFile=unit-test-results.xml
+        env:
+          NODE_ENV: test
+          VITEST_COVERAGE_THRESHOLD_BRANCHES: '80'
+          VITEST_COVERAGE_THRESHOLD_FUNCTIONS: '80'
+          VITEST_COVERAGE_THRESHOLD_LINES: '80'
+          VITEST_COVERAGE_THRESHOLD_STATEMENTS: '80'
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: unit-test-results.xml
+          retention-days: 14
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+      - name: Post coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+          # Codecov enforces the 80% threshold we set here;
+          # a PR comment is posted showing which lines are uncovered.
+          threshold: '80'
+          flags: unit
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Integration tests (no SST)
+  # Covers tRPC procedures, database interactions (test DB), and pipeline
+  # orchestration with mocked external services (Xero, SQS).
+  # Runs on PR → main/staging only (not on feature branch pushes).
+  # ---------------------------------------------------------------------------
+  integration-tests:
+    name: Integration Tests (non-Lambda)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: unit-tests
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: cloudify_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations against test DB
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cloudify_test
+
+      - name: Run integration tests
+        run: npx vitest run --project integration --reporter=verbose --reporter=junit --outputFile=integration-test-results.xml
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cloudify_test
+          # Xero and SQS are mocked in integration tests — no real credentials needed.
+          # The XERO_CLIENT_ID is set to a dummy value so the OAuth client initialises.
+          XERO_CLIENT_ID: test-client-id
+          XERO_CLIENT_SECRET: test-client-secret
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: integration-test-results.xml
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Lambda integration tests (SST bind)
+  # Requires AWS resource bindings injected by SST. These run in an environment
+  # with SST configured and AWS credentials available.
+  #
+  # Separated from the main integration job so the SST setup overhead (~30-60s)
+  # does not delay non-Lambda tests, and so Lambda failures are clearly isolated.
+  #
+  # Only runs on PR → main or staging to keep the PR feedback loop manageable.
+  # ---------------------------------------------------------------------------
+  lambda-integration-tests:
+    name: Lambda Integration Tests (sst bind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials for SST
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TEST }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TEST }}
+          aws-region: eu-west-1
+
+      - name: Run Lambda integration tests via sst bind
+        run: npx sst bind vitest run --project lambda-integration --reporter=verbose --reporter=junit --outputFile=lambda-test-results.xml
+        env:
+          NODE_ENV: test
+          SST_STAGE: test
+
+      - name: Upload Lambda test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-test-results
+          path: lambda-test-results.xml
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Job 5: All-clear summary gate
+  # This is the job that the branch protection rule is actually set on.
+  # It only succeeds if ALL prior jobs pass. Adding a single required status
+  # check here (rather than listing every job individually) means we can add
+  # or remove jobs without updating the branch protection rule.
+  # ---------------------------------------------------------------------------
+  qa-gate-passed:
+    name: QA Gate Passed
+    runs-on: ubuntu-latest
+    needs:
+      - lint-and-typecheck
+      - unit-tests
+      - integration-tests
+      - lambda-integration-tests
+    if: always()
+
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint-and-typecheck.result }}" != "success" ]]; then
+            echo "lint-and-typecheck failed"
+            exit 1
+          fi
+          if [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
+            echo "unit-tests failed or coverage below threshold"
+            exit 1
+          fi
+          if [[ "${{ needs.integration-tests.result }}" != "success" && "${{ needs.integration-tests.result }}" != "skipped" ]]; then
+            echo "integration-tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.lambda-integration-tests.result }}" != "success" && "${{ needs.lambda-integration-tests.result }}" != "skipped" ]]; then
+            echo "lambda-integration-tests failed"
+            exit 1
+          fi
+          echo "All QA gates passed. Merge is allowed."
+
+  # ---------------------------------------------------------------------------
+  # Job 6: E2E smoke tests (post-deploy to staging)
+  # Runs Playwright tests against the staging URL after every staging deploy.
+  # This job is NOT a PR gate — it is a deployment gate that blocks production
+  # promotion. It triggers only on push to staging, not on PRs.
+  # ---------------------------------------------------------------------------
+  e2e-smoke-tests:
+    name: E2E Smoke Tests (Staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: qa-gate-passed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E smoke tests against staging
+        run: npx playwright test --project=chromium
+        env:
+          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          TEST_EDITOR_EMAIL: ${{ secrets.TEST_EDITOR_EMAIL }}
+          TEST_EDITOR_PASSWORD: ${{ secrets.TEST_EDITOR_PASSWORD }}
+          TEST_VIEWER_EMAIL: ${{ secrets.TEST_VIEWER_EMAIL }}
+          TEST_VIEWER_PASSWORD: ${{ secrets.TEST_VIEWER_PASSWORD }}
+
+      - name: Upload Playwright test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Notify on E2E failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: ':rotating_light: E2E smoke tests failed on staging. Production promotion is blocked. See the Playwright report for details.'
+          fields: repo,message,commit,author
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_QA_WEBHOOK_URL }}

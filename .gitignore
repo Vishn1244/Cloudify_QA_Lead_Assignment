@@ -1,0 +1,41 @@
+# Node.js dependencies
+node_modules/
+
+# Playwright reports
+playwright-report/
+
+# Test results
+test-results/
+
+# Trace files
+trace/
+
+# Screenshots
+screenshots/
+
+# Videos
+videos/
+
+# Coverage reports
+coverage/
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code settings
+.vscode/
+
+# JetBrains IDE settings
+.idea/
+
+# Build output
+dist/
+build/
