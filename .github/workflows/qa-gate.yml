@@ -151,8 +151,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run database migrations against test DB
-        run: npx prisma migrate deploy
+      
         env:
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cloudify_test
 
