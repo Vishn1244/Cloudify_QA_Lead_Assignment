@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    /* Language and Environment */
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+
+    /* Modules */
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    /* Type Definitions */
+    "types": ["node", "@playwright/test"],
+
+    /* Type Checking */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+
+    /* Module Support */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+
+    /* Output */
+    "noEmit": true,
+    "sourceMap": true,
+
+    /* Performance */
+    "skipLibCheck": true,
+
+    /* Consistency */
+    "forceConsistentCasingInFileNames": true
+  },
+
+  "include": [
+    "tests/**/*.ts",
+    "pages/**/*.ts",
+    "utils/**/*.ts",
+    "fixtures/**/*.ts",
+    "test-data/**/*.json",
+    "playwright.config.ts"
+  ],
+
+  "exclude": [
+    "node_modules",
+    "playwright-report",
+    "test-results",
+    "coverage",
+    "dist"
+  ]
+}
