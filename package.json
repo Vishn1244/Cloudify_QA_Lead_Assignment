@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "cloudify_qa_lead_assignment",
   "version": "1.0.0",
   "description": "",
@@ -26,6 +26,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.0",
     "vitest": "^4.1.9"
   }
 }
