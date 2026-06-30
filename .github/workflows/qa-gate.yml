@@ -87,6 +87,12 @@ jobs:
 
       - name: Run unit tests with coverage
         run: npx vitest run --coverage --reporter=verbose --reporter=junit --outputFile=unit-test-results.xml
+
+      - name: Show coverage folder
+        run: |
+         pwd
+         ls -R
+         ls -R coverage || true
         env:
           NODE_ENV: test
           VITEST_COVERAGE_THRESHOLD_BRANCHES: '80'
