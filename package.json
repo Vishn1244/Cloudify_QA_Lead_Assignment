@@ -10,6 +10,7 @@
     "test:unit": "vitest run",
     "test:integration": "vitest run tests/integration/workflowRunReRun.test.ts",
     "test:e2e": "playwright test",
+    "report:show": "playwright show-report playwright-report --port 9324",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"

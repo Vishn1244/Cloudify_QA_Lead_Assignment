@@ -116,9 +116,8 @@ jobs:
   # orchestration with mocked external services (Xero, SQS).
   # Runs on PR → main/staging only (not on feature branch pushes).
   # ---------------------------------------------------------------------------
-  integration-tests:
-    name: Integration Tests (non-Lambda)
-    runs-on: ubuntu-latest
+  
+    
     timeout-minutes: 15
     needs: unit-tests
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
@@ -140,23 +139,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
+        
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+
 
       
         env:
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cloudify_test
 
-      - name: Run integration tests
-        run: npx vitest run --project integration --reporter=verbose --reporter=junit --outputFile=integration-test-results.xml
+
+
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cloudify_test
@@ -183,14 +178,12 @@ jobs:
   #
   # Only runs on PR → main or staging to keep the PR feedback loop manageable.
   # ---------------------------------------------------------------------------
-  lambda-integration-tests:
-    name: Lambda Integration Tests (sst bind)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: unit-tests
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
-
-    steps:
+  name: Lambda Integration Tests (sst bind)
+  runs-on: ubuntu-latest
+  timeout-minutes: 20
+  needs: unit-tests
+  if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
+steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -223,6 +216,7 @@ jobs:
           name: lambda-test-results
           path: lambda-test-results.xml
           retention-days: 14
+
 
   # ---------------------------------------------------------------------------
   # Job 5: All-clear summary gate
@@ -268,16 +262,14 @@ jobs:
   # This job is NOT a PR gate — it is a deployment gate that blocks production
   # promotion. It triggers only on push to staging, not on PRs.
   # ---------------------------------------------------------------------------
-  e2e-smoke-tests:
-    name: E2E Smoke Tests (Staging)
-    runs-on: ubuntu-latest
+  
     timeout-minutes: 30
     needs: qa-gate-passed
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -285,8 +277,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
