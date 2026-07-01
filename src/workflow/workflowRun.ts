@@ -7,4 +7,5 @@ const workflow = {
 
 const result = workflowRun(workflow);
 
+// eslint-disable-next-line no-console
 console.log(result);

@@ -19,7 +19,7 @@ export class Database {
 
   async executeQuery(
     query: string,
-    values: any[] = []
+    values: (string | number | boolean | null)[] = []
   ): Promise<QueryResult> {
     return await this.pool.query(query, values);
   }

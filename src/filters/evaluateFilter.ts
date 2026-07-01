@@ -10,9 +10,9 @@ export type FilterOperator =
   | 'lessThanOrEqual';
 
 export function evaluateFilter(
-  actualValue: any,
+  actualValue: string | number | boolean | null | undefined,
   operator: FilterOperator,
-  expectedValue: any
+  expectedValue: string | number | boolean | null | undefined
 ): boolean {
   switch (operator) {
     case 'equals':
