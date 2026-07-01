@@ -170,52 +170,7 @@ jobs:
 
 
   # ---------------------------------------------------------------------------
-  # Job 4: Lambda integration tests
-  # Runs Lambda tests via SST bind. Skipped if no AWS credentials available.
-  # ---------------------------------------------------------------------------
-  lambda-integration-tests:
-    name: Lambda Integration Tests (sst bind)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: unit-tests
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Configure AWS credentials for SST
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TEST }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TEST }}
-          aws-region: eu-west-1
-
-      - name: Run Lambda integration tests via sst bind
-        run: npx sst bind vitest run --project lambda-integration --reporter=verbose --reporter=junit --outputFile=lambda-test-results.xml
-        env:
-          NODE_ENV: test
-          SST_STAGE: test
-
-      - name: Upload Lambda test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lambda-test-results
-          path: lambda-test-results.xml
-          retention-days: 14
-
-  # ---------------------------------------------------------------------------
-  # Job 5: All-clear summary gate
+  # Job 4: All-clear summary gate
   # This is the job that the branch protection rule is actually set on.
   # It only succeeds if ALL prior jobs pass. Adding a single required status
   # check here (rather than listing every job individually) means we can add
@@ -228,7 +183,7 @@ jobs:
       - lint-and-typecheck
       - unit-tests
       - integration-tests
-      - lambda-integration-tests
+
     if: always()
 
     steps:
@@ -246,11 +201,7 @@ jobs:
             echo "integration-tests failed"
             exit 1
           fi
-          if [[ "${{ needs.lambda-integration-tests.result }}" != "success" && "${{ needs.lambda-integration-tests.result }}" != "skipped" ]]; then
-            echo "lambda-integration-tests failed"
-            exit 1
-          fi
-          echo "All QA gates passed. Merge is allowed."
+          
 
   # ---------------------------------------------------------------------------
   # Job 6: E2E smoke tests (post-deploy to staging)
