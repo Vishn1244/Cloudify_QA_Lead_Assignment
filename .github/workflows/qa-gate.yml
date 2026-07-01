@@ -61,6 +61,7 @@ jobs:
       - name: Run TypeScript type check
         run: npm run typecheck
 
+
   # ---------------------------------------------------------------------------
   # Job 2: Unit tests with coverage
   # Pure Vitest — no external dependencies, no SST, no database.
@@ -109,6 +110,7 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 14
+
 
   # ---------------------------------------------------------------------------
   # Job 3: Integration tests
@@ -171,7 +173,6 @@ jobs:
           retention-days: 14
 
 
-
   # ---------------------------------------------------------------------------
   # Job 4: All-clear summary gate
   # This is the job that the branch protection rule is actually set on.
@@ -217,8 +218,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: qa-gate-passed
-    if: github.event_name == 'push' &&
-   (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
 
     steps:
       - name: Checkout repository
