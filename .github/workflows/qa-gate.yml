@@ -85,7 +85,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      
+      - name: Run unit tests
+        run: npm run test:unit
         env:
           NODE_ENV: test
           VITEST_COVERAGE_THRESHOLD_BRANCHES: '80'
@@ -109,15 +110,13 @@ jobs:
           path: coverage/
           retention-days: 14
 
-      
   # ---------------------------------------------------------------------------
-  # Job 3: Integration tests (no SST)
-  # Covers tRPC procedures, database interactions (test DB), and pipeline
-  # orchestration with mocked external services (Xero, SQS).
-  # Runs on PR → main/staging only (not on feature branch pushes).
+  # Job 3: Integration tests
+  # Requires a PostgreSQL database. Runs after unit tests pass.
   # ---------------------------------------------------------------------------
-  
-    
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: unit-tests
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
@@ -139,19 +138,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Install dependencies
+        run: npm ci
 
-
-      
-        env:
-          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cloudify_test
-
-
-
+      - name: Run integration tests
+        run: npm run test:integration
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/cloudify_test
@@ -168,22 +167,20 @@ jobs:
           path: integration-test-results.xml
           retention-days: 14
 
+
+
   # ---------------------------------------------------------------------------
-  # Job 4: Lambda integration tests (SST bind)
-  # Requires AWS resource bindings injected by SST. These run in an environment
-  # with SST configured and AWS credentials available.
-  #
-  # Separated from the main integration job so the SST setup overhead (~30-60s)
-  # does not delay non-Lambda tests, and so Lambda failures are clearly isolated.
-  #
-  # Only runs on PR → main or staging to keep the PR feedback loop manageable.
+  # Job 4: Lambda integration tests
+  # Runs Lambda tests via SST bind. Skipped if no AWS credentials available.
   # ---------------------------------------------------------------------------
-  name: Lambda Integration Tests (sst bind)
-  runs-on: ubuntu-latest
-  timeout-minutes: 20
-  needs: unit-tests
-  if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
-steps:
+  lambda-integration-tests:
+    name: Lambda Integration Tests (sst bind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'staging')
+
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -216,7 +213,6 @@ steps:
           name: lambda-test-results
           path: lambda-test-results.xml
           retention-days: 14
-
 
   # ---------------------------------------------------------------------------
   # Job 5: All-clear summary gate
@@ -262,14 +258,16 @@ steps:
   # This job is NOT a PR gate — it is a deployment gate that blocks production
   # promotion. It triggers only on push to staging, not on PRs.
   # ---------------------------------------------------------------------------
-  
+  e2e-smoke-tests:
+    name: E2E Smoke Tests
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: qa-gate-passed
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
 
     steps:
       - name: Checkout repository
-
+        uses: actions/checkout@v4
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -277,7 +275,8 @@ steps:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      
+      - name: Install dependencies
+        run: npm ci
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
